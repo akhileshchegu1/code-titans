@@ -807,7 +807,7 @@ if(selectedSeats.length===0){alert("Select seats");return;}
 let total=parseInt(document.getElementById("total").innerText);
 
 let options={
-key:"YOUR_RAZORPAY_KEY",
+key:"rzp_test_SlwhoAsYivcaVQ",
 amount:total*100,
 currency:"INR",
 name:"BookWave",
