@@ -877,3 +877,305 @@ fetchMovies();
 
 </body>
 </html>
+!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookWave | Premium Seating</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;margin:0;background:#f4f4f4}
+        header{background:#222;color:#fff;padding:12px 25px;display:flex;justify-content:space-between;align-items: center;}
+        button{padding:8px 15px;border:none;border-radius:5px;cursor:pointer; font-weight: bold;}
+        .primary{background:#007bff;color:#fff}
+        .primary:hover{background:#0056b3}
+
+        .container{padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px}
+        .card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 4px 10px rgba(0,0,0,.1); transition: 0.3s;}
+        .card:hover{transform: translateY(-5px);}
+        .card img{width:100%;height:350px;object-fit:cover}
+        .card-content{padding:15px}
+
+        .search-bar{text-align:center;padding:20px;background:#fff;border-bottom: 1px solid #ddd;}
+        #search{width: 60%; padding: 10px; border-radius: 20px; border: 1px solid #ccc; outline: none;}
+        .filter{display:flex;justify-content:center;gap:10px;margin:15px}
+
+        /* Booking Overlay */
+        .booking{position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;z-index:100;display:none;overflow-y:auto;padding-bottom:50px}
+        .booking-content{max-width: 600px; margin: auto; padding: 20px;}
+        
+        .seats{display:grid;grid-template-columns: repeat(11,1fr);gap:8px;margin-top: 20px;}
+        .seat{padding:12px 0;background:#e0e0e0;text-align:center;border-radius:6px;cursor:pointer;font-size: 12px;}
+        .seat.selected{background:#28a745;color:white}
+        .seat.booked{background:#444;color:#fff;cursor:not-allowed; opacity: 0.6;}
+
+        .screen{text-align:center;background:#333;color: #fff;padding:10px;margin:20px auto;width:80%;border-radius:0 0 50px 50px;box-shadow: 0 10px 20px rgba(0,0,0,0.1)}
+        .total-box{text-align:center;font-size: 1.2rem; margin:20px 0}
+        
+        .modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);display:none;justify-content:center;align-items:center;z-index:200}
+        .modal-box{background:#fff;padding:25px;border-radius:10px;width:320px}
+        .modal-box input{width:90%;padding:10px;margin:10px 0;border: 1px solid #ddd; border-radius: 5px;}
+    </style>
+</head>
+<body>
+
+<header>
+    <h2>🎟️ BookWave</h2>
+    <div>
+        <span id="userDisplay" style="margin-right: 15px;"></span>
+        <button id="loginBtn" class="primary" onclick="openLogin()">Login</button>
+        <button id="logoutBtn" style="display:none" onclick="logout()">Logout</button>
+    </div>
+</header>
+
+<div class="search-bar">
+    <input id="search" placeholder="Search movies or events..." onkeyup="searchAll()">
+</div>
+
+<div class="filter">
+    <button onclick="filterType('all')">All</button>
+    <button onclick="filterType('movie')">Movies</button>
+    <button onclick="filterType('event')">Events</button>
+</div>
+
+<div class="container" id="list"></div>
+
+<!-- BOOKING AREA -->
+<div class="booking" id="bookingBox">
+    <div class="booking-content">
+        <button onclick="bookingBox.style.display='none'">← Back</button>
+        <h2 id="name" style="text-align:center"></h2>
+        <div class="screen">SCREEN</div>
+        <div class="seats" id="seatContainer"></div>
+        <div class="total-box">Total Payable: <strong>₹<span id="total">0</span></strong></div>
+        <button class="primary" style="width:100%; padding: 15px;" onclick="pay()">Confirm & Pay</button>
+    </div>
+</div>
+
+<!-- AUTH MODALS -->
+<div class="modal" id="loginModal">
+    <div class="modal-box">
+        <h3 id="authTitle">Login</h3>
+        <input id="luser" placeholder="Username">
+        <input id="lpass" type="password" placeholder="Password">
+        <button class="primary" style="width:100%" onclick="handleAuth()">Submit</button>
+        <p style="text-align:center; cursor:pointer; color:blue" onclick="toggleAuth()">New user? Signup</p>
+        <button onclick="closeAll()" style="width:100%; margin-top:5px">Cancel</button>
+    </div>
+</div>
+
+<script>
+const API_KEY="YOUR_API_KEY"; // Optional: Use TMDB Key here
+const IMG_URL="https://image.tmdb.org/t/p/w500";
+
+let allItems=[], filtered=[];
+let selectedItem=null, selectedSeats=[];
+let isSignup = false;
+let user = localStorage.getItem("activeUser");
+
+// Initial Data
+let events=[
+    {name:"Arijit Singh Live",price:1500,type:"event",image:"https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400"},
+    {name:"Standup Comedy",price:499,type:"event",image:"https://images.unsplash.com/photo-1514525253361-bee8a187499b?w=400"}
+];
+
+let fallbackMovies=[
+    {name:"Avengers: Endgame",price:250,type:"movie",image:"https://images.unsplash.com/photo-1560109964-515d16ee59a3?w=400"},
+    {name:"Interstellar",price:300,type:"movie",image:"https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=400"}
+];
+
+async function init(){
+    allItems = [...fallbackMovies, ...events];
+    filtered = allItems;
+    display();
+    updateUserUI();
+}
+
+function display(){
+    let list = document.getElementById("list");
+    list.innerHTML="";
+    filtered.forEach((item, idx)=>{
+        list.innerHTML += `
+            <div class="card">
+                <img src="${item.image}">
+                <div class="card-content">
+                    <small>${item.type.toUpperCase()}</small>
+                    <h3>${item.name}</h3>
+                    <p>Starts from ₹${item.price}</p>
+                    <button class="primary" onclick="openBooking(${idx})">Book Tickets</button>
+                </div>
+            </div>`;
+    });
+}
+
+// Search & Filter
+function searchAll(){
+    let q = document.getElementById("search").value.toLowerCase();
+    filtered = allItems.filter(i => i.name.toLowerCase().includes(q));
+    display();
+}
+function filterType(t){
+    filtered = (t === "all") ? allItems : allItems.filter(i => i.type === t);
+    display();
+}
+
+// Booking Logic
+function openBooking(idx){
+    if(!user){ alert("Please login to book tickets"); openLogin(); return; }
+    selectedItem = filtered[idx];
+    selectedSeats = [];
+    document.getElementById("name").innerText = selectedItem.name;
+    document.getElementById("bookingBox").style.display = "block";
+    renderSeats();
+}
+
+function renderSeats(){
+    const container = document.getElementById("seatContainer");
+    container.innerHTML = "";
+    updateTotal();
+
+    // Key Logic: Load already booked seats for THIS specific movie/event
+    let persistentStore = JSON.parse(localStorage.getItem("bookings_" + selectedItem.name)) || [];
+    
+    let rows = ["A", "B", "C", "D", "E"];
+    rows.forEach(row => {
+        for(let i=1; i<=10; i++){
+            if(i === 6){ // Corridor gap
+                let gap = document.createElement("div");
+                gap.style.visibility = "hidden";
+                container.appendChild(gap);
+            }
+
+            let seatId = row + i;
+            let seat = document.createElement("div");
+            seat.className = "seat";
+            seat.innerText = seatId;
+
+            // Mark as booked if exists in localStorage
+            if(persistentStore.includes(seatId)){
+                seat.classList.add("booked");
+            }
+
+            seat.onclick = () => {
+                if(seat.classList.contains("booked")) return;
+                
+                if(selectedSeats.includes(seatId)){
+                    selectedSeats = selectedSeats.filter(s => s !== seatId);
+                    seat.classList.remove("selected");
+                } else {
+                    if(selectedSeats.length >= 6){ alert("Max 6 seats allowed"); return; }
+                    selectedSeats.push(seatId);
+                    seat.classList.add("selected");
+                }
+                updateTotal();
+            };
+            container.appendChild(seat);
+        }
+    });
+}
+
+function updateTotal(){
+    let total = 0;
+    selectedSeats.forEach(s => {
+        let row = s[0];
+        let multiplier = (row === "A" || row === "B") ? 1.5 : 1; // Premium rows
+        total += selectedItem.price * multiplier;
+    });
+    document.getElementById("total").innerText = Math.floor(total);
+}
+
+// Razorpay & Persistence
+function pay(){
+    if(selectedSeats.length === 0){ alert("Please select at least one seat"); return; }
+    let finalAmount = document.getElementById("total").innerText;
+
+    let options = {
+        key: "rzp_test_SlwhoAsYivcaVQ", // Test Key
+        amount: finalAmount * 100,
+        currency: "INR",
+        name: "BookWave",
+        description: "Booking for " + selectedItem.name,
+        handler: function(response){
+            saveBookingToLocalStorage();
+            alert("Payment Successful! Seats " + selectedSeats.join(", ") + " are confirmed.");
+            
+            // Generate simple ticket
+            let ticket = window.open("", "_blank");
+            ticket.document.write(`
+                <div style="font-family:sans-serif; border:2px dashed #000; padding:20px; width:300px">
+                    <h2>BookWave Ticket</h2>
+                    <hr>
+                    <p><strong>Show:</strong> ${selectedItem.name}</p>
+                    <p><strong>Seats:</strong> ${selectedSeats.join(", ")}</p>
+                    <p><strong>Paid:</strong> ₹${finalAmount}</p>
+                    <p><strong>User:</strong> ${user}</p>
+                    <button onclick="window.print()">Print Ticket</button>
+                </div>
+            `);
+            document.getElementById("bookingBox").style.display = "none";
+        }
+    };
+    let rzp = new Razorpay(options);
+    rzp.open();
+}
+
+function saveBookingToLocalStorage(){
+    // Save to the movie-specific record
+    let key = "bookings_" + selectedItem.name;
+    let existingBookings = JSON.parse(localStorage.getItem(key)) || [];
+    let updatedBookings = [...existingBookings, ...selectedSeats];
+    localStorage.setItem(key, JSON.stringify(updatedBookings));
+}
+
+// Auth Systems
+function openLogin(){ 
+    isSignup = false;
+    document.getElementById("authTitle").innerText = "Login";
+    document.getElementById("loginModal").style.display = "flex"; 
+}
+function toggleAuth(){
+    isSignup = !isSignup;
+    document.getElementById("authTitle").innerText = isSignup ? "Signup" : "Login";
+}
+function closeAll(){ document.getElementById("loginModal").style.display = "none"; }
+
+function handleAuth(){
+    let u = document.getElementById("luser").value;
+    let p = document.getElementById("lpass").value;
+    if(!u || !p) return;
+
+    if(isSignup){
+        if(localStorage.getItem("user_"+u)){ alert("User already exists"); return; }
+        localStorage.setItem("user_"+u, p);
+        alert("Signup successful! Please login.");
+        toggleAuth();
+    } else {
+        if(localStorage.getItem("user_"+u) === p){
+            user = u;
+            localStorage.setItem("activeUser", u);
+            updateUserUI();
+            closeAll();
+        } else {
+            alert("Invalid credentials");
+        }
+    }
+}
+
+function logout(){
+    localStorage.removeItem("activeUser");
+    user = null;
+    updateUserUI();
+    document.getElementById("bookingBox").style.display = "none";
+}
+
+function updateUserUI(){
+    document.getElementById("userDisplay").innerText = user ? "Welcome, " + user : "";
+    document.getElementById("loginBtn").style.display = user ? "none" : "inline-block";
+    document.getElementById("logoutBtn").style.display = user ? "inline-block" : "none";
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
