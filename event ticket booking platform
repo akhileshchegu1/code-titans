@@ -1,1 +1,273 @@
 hello
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BookWave</title>
+
+<style>
+body{font-family:Arial;margin:0;background:#f4f4f4}
+header{background:#222;color:#fff;padding:12px;display:flex;justify-content:space-between;align-items:center}
+button{padding:8px;border:none;border-radius:5px;cursor:pointer}
+.primary{background:#007bff;color:#fff}
+.container{padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px}
+.card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 4px 10px rgba(0,0,0,.2)}
+.card img{width:100%;height:160px;object-fit:cover}
+.card-content{padding:10px}
+.search-bar{padding:10px;text-align:center;background:#fff}
+.booking{position:fixed;bottom:0;width:100%;background:#fff;padding:10px;display:none}
+.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);display:none;justify-content:center;align-items:center}
+.modal-box{background:#fff;padding:20px;border-radius:10px;width:320px}
+.modal-box input{width:100%;padding:8px;margin:5px 0}
+.seats{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin:10px 0}
+.seat{padding:10px;background:#ccc;text-align:center;cursor:pointer}
+.seat.selected{background:#28a745;color:#fff}
+.spinner{border:5px solid #f3f3f3;border-top:5px solid #007bff;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:20px auto}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.checkmark{font-size:40px;color:green;margin:10px}
+</style>
+</head>
+<body>
+
+<header>
+<h2>🎟️ BookWave</h2>
+<div>
+<span id="userDisplay"></span>
+<button class="primary" onclick="openLogin()">Login</button>
+<button class="primary" onclick="openSignup()">Signup</button>
+<button onclick="logout()">Logout</button>
+</div>
+</header>
+
+<div class="search-bar">
+<input type="text" id="search" placeholder="Search..." onkeyup="searchItems()">
+</div>
+
+<div class="container" id="list"></div>
+
+<div class="booking" id="bookingBox">
+<h3 id="name"></h3>
+<div class="seats" id="seatContainer"></div>
+<button onclick="openPayment()">Proceed Payment</button>
+</div>
+
+<!-- LOGIN -->
+<div class="modal" id="loginModal">
+<div class="modal-box">
+<h3>Login</h3>
+<input id="luser" placeholder="Username">
+<input id="lpass" type="password" placeholder="Password">
+<button onclick="login()">Login</button>
+<button onclick="closeAll()">Close</button>
+</div>
+</div>
+
+<!-- SIGNUP -->
+<div class="modal" id="signupModal">
+<div class="modal-box">
+<h3>Signup</h3>
+<input id="suser" placeholder="Username">
+<input id="spass" type="password" placeholder="Password">
+<button onclick="signup()">Create</button>
+<button onclick="closeAll()">Close</button>
+</div>
+</div>
+
+<!-- PAYMENT -->
+<div class="modal" id="payModal">
+<div class="modal-box">
+<h3>Payment</h3>
+<input placeholder="Card Number">
+<input placeholder="Expiry">
+<input placeholder="CVV">
+<button onclick="pay()">Pay</button>
+<button onclick="closeAll()">Cancel</button>
+</div>
+</div>
+
+<script>
+const items=[
+{name:"Music Concert",price:500,type:"Event",image:"https://images.unsplash.com/photo-1507874457470-272b3c8d8ee2"},
+{name:"Food Festival",price:200,type:"Event",image:"https://images.unsplash.com/photo-1504674900247-0877df9cc836"},
+{name:"Tech Summit",price:800,type:"Event",image:"https://images.unsplash.com/photo-1551836022-d5d88e9218df"},
+{name:"Comedy Night",price:300,type:"Event",image:"https://images.unsplash.com/photo-1521335629791-ce4aec67dd53"},
+{name:"Avengers",price:250,type:"Movie",image:"https://images.unsplash.com/photo-1536440136628-849c177e76a1"},
+{name:"Horror Night",price:220,type:"Movie",image:"https://images.unsplash.com/photo-1505686994434-e3cc5abf1330"}
+];
+
+let filtered=[...items];
+let selected=null;
+let user=localStorage.getItem("user");
+let selectedSeats=[];
+
+function updateUserUI(){
+if(user){document.getElementById("userDisplay").innerText="Hi, "+user}
+}
+
+function load(){
+const c=document.getElementById('list');
+c.innerHTML='';
+filtered.forEach((i,idx)=>{
+c.innerHTML+=`<div class="card">
+<img src="${i.image}">
+<div class="card-content">
+<p>${i.type}</p>
+<h3>${i.name}</h3>
+<p>₹${i.price}</p>
+<button onclick="book(${idx})">Book</button>
+</div></div>`});}
+
+function searchItems(){
+const q=document.getElementById('search').value.toLowerCase();
+filtered=items.filter(i=>i.name.toLowerCase().includes(q)||i.type.toLowerCase().includes(q));
+load();}
+
+function book(i){
+if(!user){alert("Login first");openLogin();return;}
+selected=filtered[i];
+selectedSeats=[];
+document.getElementById('name').innerText=selected.name;
+document.getElementById('bookingBox').style.display='block';
+renderSeats();
+}
+
+function renderSeats(){
+const container=document.getElementById('seatContainer');
+container.innerHTML='';
+for(let i=1;i<=15;i++){
+let seat=document.createElement('div');
+seat.className='seat';
+seat.innerText=i;
+seat.onclick=()=>toggleSeat(seat,i);
+container.appendChild(seat);
+}
+}
+
+function toggleSeat(el,num){
+if(selectedSeats.includes(num)){
+selectedSeats=selectedSeats.filter(s=>s!==num);
+el.classList.remove('selected');
+}else{
+selectedSeats.push(num);
+el.classList.add('selected');
+}
+}
+
+function openPayment(){
+if(selectedSeats.length===0){alert("Select seats first");return;}
+document.getElementById('payModal').style.display='flex';}
+
+function pay(){
+  const modal = document.getElementById('payModal');
+  const box = modal.querySelector('.modal-box');
+
+  // Show loading spinner
+  box.innerHTML = `
+    <h3>Processing Payment...</h3>
+    <div class="spinner"></div>
+    <p>Please wait</p>
+  `;
+
+  setTimeout(()=>{
+    // Success animation
+    box.innerHTML = `
+      <h3>✅ Payment Successful</h3>
+      <div class="checkmark">✔</div>
+      <p>Booking Confirmed!</p>
+    `;
+
+    setTimeout(()=>{
+      const total=selectedSeats.length*selected.price;
+      const data=`${selected.name}|Seats:${selectedSeats.join(',')}|₹${total}`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data)}`;
+      const win = window.open('', '_blank');
+      win.document.write(`
+        <html>
+        <body style="font-family:Arial;text-align:center;padding:20px">
+        <h2>🎟️ BookWave Ticket</h2>
+        <p>${selected.name}</p>
+        <p>Seats: ${selectedSeats.join(', ')}</p>
+        <p>Total: ₹${total}</p>
+        <img src="${qrUrl}" />
+        <br/><br/>
+        <a href="${qrUrl}" download="ticket.png">
+          <button>Download Ticket</button>
+        </a>
+        <br/><br/>
+        <button onclick="window.print()">Print</button>
+        </body>
+        </html>
+      `);
+
+      closeAll();
+      document.getElementById('bookingBox').style.display='none';
+
+      // Reset payment modal
+      box.innerHTML = `
+        <h3>Payment</h3>
+        <input placeholder="Card Number">
+        <input placeholder="Expiry">
+        <input placeholder="CVV">
+        <button onclick="pay()">Pay</button>
+        <button onclick="closeAll()">Cancel</button>
+      `;
+    },1500);
+  },2000);
+}|Seats:${selectedSeats.join(',')}|₹${total}`;
+alert("Payment success");
+const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data)}`;
+    const win = window.open('', '_blank');
+    win.document.write(`
+      <html>
+      <head><title>BookWave Ticket</title></head>
+      <body style="font-family:Arial;text-align:center;padding:20px">
+        <h2>🎟️ BookWave Ticket</h2>
+        <p>${selected.name}</p>
+        <p>Seats: ${selectedSeats.join(', ')}</p>
+        <p>Total: ₹${total}</p>
+        <img id="qr" src="${qrUrl}" style="margin:20px" />
+        <br/>
+        <a href="${qrUrl}" download="ticket.png">
+          <button style="padding:10px 15px;background:#28a745;color:#fff;border:none;border-radius:5px;cursor:pointer">Download Ticket</button>
+        </a>
+        <br/><br/>
+        <button onclick="window.print()">Print Ticket</button>
+      </body>
+      </html>
+    `);
+closeAll();
+document.getElementById('bookingBox').style.display='none';}
+
+function openLogin(){document.getElementById('loginModal').style.display='flex';}
+function openSignup(){document.getElementById('signupModal').style.display='flex';}
+function closeAll(){
+loginModal.style.display='none';
+signupModal.style.display='none';
+payModal.style.display='none';}
+
+function signup(){
+const u=suser.value;const p=spass.value;
+localStorage.setItem(u,p);
+alert("Signup done");closeAll();}
+
+function login(){
+const u=luser.value;const p=lpass.value;
+if(localStorage.getItem(u)===p){
+user=u;localStorage.setItem("user",u);
+updateUserUI();
+alert("Login success");closeAll();
+}else alert("Invalid");}
+
+function logout(){
+localStorage.removeItem("user");
+user=null;
+document.getElementById("userDisplay").innerText="";
+}
+
+updateUserUI();
+load();
+</script>
+
+</body>
+</html>
