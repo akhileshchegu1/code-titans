@@ -1481,3 +1481,314 @@ window.onload = init;
 </script>
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BookWave</title>
+
+<!-- Razorpay -->
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+<!-- QR Code -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+body{font-family:Arial;margin:0;background:#f4f4f4}
+header{background:#222;color:#fff;padding:12px;text-align:center;font-size:22px}
+
+.container{padding:20px}
+.hidden{display:none}
+
+button{padding:10px 15px;margin:5px;border:none;background:#222;color:#fff;cursor:pointer;border-radius:5px}
+button:hover{background:#444}
+
+input{padding:8px;margin:5px;width:200px}
+
+.card{
+  background:#fff;
+  padding:10px;
+  margin:10px;
+  display:inline-block;
+  width:200px;
+  border-radius:10px;
+  box-shadow:0 0 5px rgba(0,0,0,0.2);
+  text-align:center
+}
+
+.card img{
+  width:100%;
+  height:250px;
+  border-radius:10px;
+  transition:0.3s
+}
+
+.card img:hover{
+  transform:scale(1.05)
+}
+
+/* Seats */
+.seat{
+  width:30px;height:30px;margin:5px;
+  display:inline-block;
+  background:#ccc;
+  cursor:pointer;
+  border-radius:5px;
+  text-align:center;
+  line-height:30px;
+}
+
+.selected{background:green;color:white}
+.booked{background:red;cursor:not-allowed;color:white}
+
+#seatContainer{margin-top:20px}
+#qrCode{margin-top:20px}
+</style>
+</head>
+
+<body>
+
+<header>🎟️ BookWave Ticket Booking</header>
+
+<div class="container">
+
+<!-- LOGIN -->
+<div id="login">
+<h2>Login</h2>
+<input type="text" id="loginUser" placeholder="Username"><br>
+<input type="password" id="loginPass" placeholder="Password"><br>
+<button onclick="loginUserFunc()">Login</button>
+<button onclick="showSignup()">Signup</button>
+</div>
+
+<!-- SIGNUP -->
+<div id="signup" class="hidden">
+<h2>Signup</h2>
+<input type="text" id="signupUser" placeholder="Username"><br>
+<input type="password" id="signupPass" placeholder="Password"><br>
+<button onclick="signupUserFunc()">Create Account</button>
+<button onclick="backToLogin()">⬅ Back</button>
+</div>
+
+<!-- HOME -->
+<div id="home" class="hidden">
+<h2>Welcome!</h2>
+
+<input type="text" id="searchBar" placeholder="Search..." onkeyup="searchItems()">
+
+<div id="items">
+
+<div class="card">
+<img src="https://m.media-amazon.com/images/I/81ExhpBEbHL.jpg">
+<h3>Avengers</h3>
+<button onclick="selectItem('Avengers',150)">Book</button>
+</div>
+
+<div class="card">
+<img src="https://m.media-amazon.com/images/I/51v5ZpFyaFL.jpg">
+<h3>Inception</h3>
+<button onclick="selectItem('Inception',120)">Book</button>
+</div>
+
+<div class="card">
+<img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRFooTK0pKfgo9L_NE87BVeR8MEPqe1OnEYpg&s">
+<h3>Interstellar</h3>
+<button onclick="selectItem('Interstellar',130)">Book</button>
+</div>
+
+<div class="card">
+<img src="https://www.suitmeister.com/cdn/shop/files/OBBO-0012_The-Joker_studio_wb_01.jpg?v=1732871577">
+<h3>Joker</h3>
+<button onclick="selectItem('Joker',140)">Book</button>
+</div>
+
+<div class="card">
+<img src="https://images.unsplash.com/photo-1507874457470-272b3c8d8ee2">
+<h3>Music Concert</h3>
+<button onclick="selectItem('Concert',200)">Book</button>
+</div>
+
+<div class="card">
+<img src="https://images.unsplash.com/photo-1515169067868-5387ec356754">
+<h3>Standup Comedy</h3>
+<button onclick="selectItem('Comedy',180)">Book</button>
+</div>
+
+<div class="card">
+<img src="https://images.unsplash.com/photo-1517649763962-0c623066013b">
+<h3>Cycle race</h3>
+<button onclick="selectItem('cycle race',250)">Book</button>
+</div>
+
+</div>
+</div>
+
+<!-- BOOKING -->
+<div id="booking" class="hidden">
+<h2 id="selectedTitle"></h2>
+
+<div id="seatContainer"></div>
+
+<h3>Total Seats: <span id="seatCount">0</span></h3>
+<h3>Total Amount: ₹<span id="totalAmount">0</span></h3>
+
+<button onclick="payNow()">💳 Pay & Book</button>
+<button onclick="goHome()">⬅ Back</button>
+
+<div id="qrCode"></div>
+</div>
+
+</div>
+
+<script>
+let selectedMovie = "";
+let price = 0;
+let selectedSeats = [];
+let bookedSeats = [];
+
+/* AUTH SYSTEM (localStorage) */
+function signupUserFunc(){
+  let user = document.getElementById("signupUser").value;
+  let pass = document.getElementById("signupPass").value;
+
+  if(user === "" || pass === ""){
+    alert("Fill all fields");
+    return;
+  }
+
+  localStorage.setItem(user, pass);
+  alert("Signup successful!");
+  backToLogin();
+}
+
+function loginUserFunc(){
+  let user = document.getElementById("loginUser").value;
+  let pass = document.getElementById("loginPass").value;
+
+  if(localStorage.getItem(user) === pass){
+    document.getElementById("login").style.display="none";
+    document.getElementById("home").style.display="block";
+  }else{
+    alert("Invalid credentials");
+  }
+}
+
+function showSignup(){
+  document.getElementById("login").style.display="none";
+  document.getElementById("signup").style.display="block";
+}
+
+function backToLogin(){
+  document.getElementById("signup").style.display="none";
+  document.getElementById("login").style.display="block";
+}
+
+/* SEARCH */
+function searchItems(){
+  let input=document.getElementById("searchBar").value.toLowerCase();
+  let cards=document.getElementsByClassName("card");
+
+  for(let i=0;i<cards.length;i++){
+    let title=cards[i].innerText.toLowerCase();
+    cards[i].style.display = title.includes(input) ? "inline-block":"none";
+  }
+}
+
+/* SELECT */
+function selectItem(name,p){
+  selectedMovie=name;
+  price=p;
+  selectedSeats=[];
+  document.getElementById("home").style.display="none";
+  document.getElementById("booking").style.display="block";
+  document.getElementById("selectedTitle").innerText=name;
+  generateSeats();
+}
+
+/* SEATS */
+function generateSeats(){
+  let container=document.getElementById('seatContainer');
+  container.innerHTML="";
+
+  for(let i=1;i<=30;i++){
+    let seat=document.createElement('div');
+    seat.classList.add('seat');
+
+    if(bookedSeats.includes(i)){
+      seat.classList.add('booked');
+    }
+
+    seat.innerText=i;
+
+    seat.onclick=function(){
+      if(seat.classList.contains('booked')) return;
+
+      if(seat.classList.contains('selected')){
+        seat.classList.remove('selected');
+        selectedSeats=selectedSeats.filter(s=>s!=i);
+      }else{
+        seat.classList.add('selected');
+        selectedSeats.push(i);
+      }
+      updateTotal();
+    };
+
+    container.appendChild(seat);
+  }
+}
+
+/* TOTAL */
+function updateTotal(){
+  document.getElementById("seatCount").innerText=selectedSeats.length;
+  document.getElementById("totalAmount").innerText=selectedSeats.length*price;
+}
+
+/* PAYMENT */
+function payNow(){
+
+  if(selectedSeats.length === 0){
+    alert("Select at least 1 seat");
+    return;
+  }
+
+  let total = selectedSeats.length * price;
+
+  var options = {
+    "key": "rzp_test_SlwhoAsYivcaVQ",
+    "amount": total * 100,
+    "currency": "INR",
+    "name": "BookWave",
+    "description": selectedMovie,
+
+    "handler": function (response){
+      bookedSeats.push(...selectedSeats);
+
+      let qrData = `Movie: ${selectedMovie}
+Seats: ${selectedSeats.join(",")}
+Total: ₹${total}
+PaymentID: ${response.razorpay_payment_id}`;
+
+      document.getElementById('qrCode').innerHTML="";
+      new QRCode(document.getElementById("qrCode"), qrData);
+
+      alert("✅ Payment Successful!");
+      generateSeats();
+    },
+
+    "theme": {"color":"#3399cc"}
+  };
+
+  var rzp = new Razorpay(options);
+  rzp.open();
+}
+
+/* BACK */
+function goHome(){
+  document.getElementById("booking").style.display="none";
+  document.getElementById("home").style.display="block";
+}
+</script>
+
+</body>
+</html>
