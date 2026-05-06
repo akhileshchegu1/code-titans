@@ -553,3 +553,327 @@ load();
 
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BookWave</title>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+<style>
+body{font-family:Arial;margin:0;background:#f4f4f4}
+header{background:#222;color:#fff;padding:12px;display:flex;justify-content:space-between}
+button{padding:8px;border:none;border-radius:5px;cursor:pointer}
+.primary{background:#007bff;color:#fff}
+
+.container{padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px}
+.card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 4px 10px rgba(0,0,0,.2)}
+.card img{width:100%;height:300px;object-fit:cover}
+.card-content{padding:10px}
+
+.search-bar{text-align:center;padding:10px;background:#fff}
+.filter{display:flex;justify-content:center;gap:10px;margin:10px}
+
+.booking{position:fixed;bottom:0;width:100%;background:#fff;padding:10px;display:none}
+
+.seats{
+  display:grid;
+  grid-template-columns: repeat(11,1fr);
+  gap:6px;
+  max-width:500px;
+  margin:auto;
+}
+
+.seat{padding:10px;background:#ccc;text-align:center;border-radius:6px;cursor:pointer}
+.seat.selected{background:#28a745;color:white}
+.seat.booked{background:#444;color:#fff;cursor:not-allowed}
+
+.screen{
+  text-align:center;
+  background:#ddd;
+  padding:10px;
+  margin:10px auto;
+  width:60%;
+  border-radius:10px;
+}
+
+.total-box{text-align:center;font-weight:bold;margin-top:10px}
+
+.modal{
+position:fixed;top:0;left:0;width:100%;height:100%;
+background:rgba(0,0,0,.5);display:none;justify-content:center;align-items:center;
+}
+.modal-box{background:#fff;padding:20px;border-radius:10px;width:300px}
+.modal-box input{width:100%;padding:8px;margin:5px 0}
+</style>
+</head>
+
+<body>
+
+<header>
+<h2>🎟️ BookWave</h2>
+<div>
+<span id="userDisplay"></span>
+<button class="primary" onclick="openLogin()">Login</button>
+<button class="primary" onclick="openSignup()">Signup</button>
+<button onclick="logout()">Logout</button>
+</div>
+</header>
+
+<div class="search-bar">
+<input id="search" placeholder="Search..." onkeyup="searchAll()">
+</div>
+
+<div class="filter">
+<button onclick="filterType('all')">All</button>
+<button onclick="filterType('movie')">Movies</button>
+<button onclick="filterType('event')">Events</button>
+</div>
+
+<div class="container" id="list"></div>
+
+<div class="booking" id="bookingBox">
+<h3 id="name"></h3>
+
+<div class="screen">SCREEN</div>
+<div class="seats" id="seatContainer"></div>
+
+<div class="total-box">Total ₹<span id="total">0</span></div>
+<button class="primary" onclick="pay()">Pay Now</button>
+</div>
+
+<!-- LOGIN -->
+<div class="modal" id="loginModal">
+<div class="modal-box">
+<h3>Login</h3>
+<input id="luser">
+<input id="lpass" type="password">
+<button onclick="login()">Login</button>
+<button onclick="closeAll()">Close</button>
+</div>
+</div>
+
+<!-- SIGNUP -->
+<div class="modal" id="signupModal">
+<div class="modal-box">
+<h3>Signup</h3>
+<input id="suser">
+<input id="spass" type="password">
+<button onclick="signup()">Create</button>
+<button onclick="closeAll()">Close</button>
+</div>
+</div>
+
+<script>
+const API_KEY="YOUR_API_KEY";
+const IMG_URL="https://image.tmdb.org/t/p/w500";
+
+let movies=[];
+let events=[
+{name:"Music Concert",price:500,type:"event",image:"https://picsum.photos/300/400?1"},
+{name:"Food Festival",price:200,type:"event",image:"https://picsum.photos/300/400?2"}
+];
+
+let fallbackMovies=[
+{name:"Avengers",price:250,type:"movie",image:"https://picsum.photos/300/400?3"},
+{name:"Inception",price:280,type:"movie",image:"https://picsum.photos/300/400?4"}
+];
+
+let allItems=[],filtered=[];
+let selected=null,selectedSeats=[];
+let user=localStorage.getItem("user");
+
+// Fetch movies
+async function fetchMovies(){
+try{
+let res=await fetch(`https://api.themoviedb.org/3/movie/popular?api_key=${API_KEY}`);
+if(!res.ok) throw new Error();
+let data=await res.json();
+movies=data.results.map(m=>({
+name:m.title,
+image:m.poster_path?IMG_URL+m.poster_path:"https://picsum.photos/300/400",
+price:200+Math.random()*200|0,
+type:"movie"
+}));
+}catch{
+movies=fallbackMovies;
+}
+
+allItems=[...movies,...events];
+filtered=allItems;
+display();
+}
+
+// Display
+function display(){
+list.innerHTML="";
+filtered.forEach((i,idx)=>{
+list.innerHTML+=`
+<div class="card">
+<img src="${i.image}">
+<div class="card-content">
+<p>${i.type.toUpperCase()}</p>
+<h3>${i.name}</h3>
+<p>₹${i.price}</p>
+<button class="primary" onclick="book(${idx})">Book</button>
+</div></div>`;
+});
+}
+
+// Search/filter
+function searchAll(){
+let q=search.value.toLowerCase();
+filtered=allItems.filter(i=>i.name.toLowerCase().includes(q));
+display();
+}
+function filterType(t){
+filtered=t==="all"?allItems:allItems.filter(i=>i.type===t);
+display();
+}
+
+// Booking
+function book(i){
+if(!user){alert("Login first");openLogin();return;}
+selected=filtered[i];
+selectedSeats=[];
+name.innerText=selected.name;
+bookingBox.style.display="block";
+renderSeats();
+}
+
+// 🎬 Theatre seats (UPDATED)
+function renderSeats(){
+seatContainer.innerHTML="";
+selectedSeats=[];
+updateTotal();
+
+let rows=["A","B","C","D","E"];
+
+rows.forEach(row=>{
+for(let i=1;i<=10;i++){
+
+if(i===6){
+let gap=document.createElement("div");
+gap.style.visibility="hidden";
+seatContainer.appendChild(gap);
+}
+
+let seat=document.createElement("div");
+seat.className="seat";
+let id=row+i;
+seat.innerText=id;
+
+if(Math.random()<0.2) seat.classList.add("booked");
+
+seat.onclick=()=>{
+if(seat.classList.contains("booked")) return;
+
+if(selectedSeats.includes(id)){
+selectedSeats=selectedSeats.filter(s=>s!==id);
+seat.classList.remove("selected");
+}else{
+if(selectedSeats.length>=6){alert("Max 6 seats");return;}
+selectedSeats.push(id);
+seat.classList.add("selected");
+}
+
+updateTotal(); // 🔥 LIVE UPDATE
+};
+
+seatContainer.appendChild(seat);
+}
+});
+}
+
+// 💰 LIVE TOTAL (UPDATED)
+function updateTotal(){
+let total=0;
+
+selectedSeats.forEach(s=>{
+let row=s[0];
+let multi=(row==="A"||row==="B")?1.5:1;
+total+=selected.price*multi;
+});
+
+document.getElementById("total").innerText=Math.floor(total);
+}
+
+// Razorpay
+function pay(){
+if(selectedSeats.length===0){alert("Select seats");return;}
+
+let total=parseInt(document.getElementById("total").innerText);
+
+let options={
+key:"YOUR_RAZORPAY_KEY",
+amount:total*100,
+currency:"INR",
+name:"BookWave",
+description:selected.name,
+
+handler:function(res){
+alert("Payment Successful 🎉");
+
+let win=window.open("");
+win.document.write(`
+<h2>Booking Confirmed</h2>
+<p>${selected.name}</p>
+<p>Seats: ${selectedSeats.join(",")}</p>
+<p>Total ₹${total}</p>
+<p>Payment ID: ${res.razorpay_payment_id}</p>
+<button onclick="window.print()">Print</button>
+`);
+bookingBox.style.display="none";
+},
+
+prefill:{name:user||"Guest"},
+theme:{color:"#007bff"}
+};
+
+let rzp=new Razorpay(options);
+rzp.open();
+}
+
+// Auth
+function openLogin(){loginModal.style.display="flex";}
+function openSignup(){signupModal.style.display="flex";}
+function closeAll(){
+loginModal.style.display="none";
+signupModal.style.display="none";
+}
+
+function signup(){
+if(localStorage.getItem(suser.value)){alert("User exists");return;}
+localStorage.setItem(suser.value,spass.value);
+alert("Signup done");closeAll();
+}
+
+function login(){
+if(localStorage.getItem(luser.value)===lpass.value){
+user=luser.value;
+localStorage.setItem("user",user);
+updateUserUI();
+alert("Login success");
+closeAll();
+}else alert("Invalid");
+}
+
+function logout(){
+localStorage.removeItem("user");
+user=null;
+updateUserUI();
+}
+
+function updateUserUI(){
+userDisplay.innerText=user?"Hi "+user:"";
+}
+
+// Init
+updateUserUI();
+fetchMovies();
+</script>
+
+</body>
+</html>
