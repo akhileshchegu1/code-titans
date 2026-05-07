@@ -2069,3 +2069,616 @@ window.onload = init;
 </body>
 </html>
 https://vocal-pithivier-b0ee82.netlify.app/
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookWave | Premium Seating</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;margin:0;background:#f4f4f4}
+        header{background:#222;color:#fff;padding:12px 25px;display:flex;justify-content:space-between;align-items: center;}
+        button{padding:8px 15px;border:none;border-radius:5px;cursor:pointer; font-weight: bold; transition: 0.2s;}
+        .primary{background:#007bff;color:#fff}
+        .primary:hover{background:#0056b3}
+
+        .container{padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px}
+        .card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 4px 10px rgba(0,0,0,.1); transition: 0.3s;}
+        .card:hover{transform: translateY(-5px);}
+        .card img{width:100%;height:350px;object-fit:cover}
+        .card-content{padding:15px}
+
+        .search-bar{text-align:center;padding:20px;background:#fff;border-bottom: 1px solid #ddd;}
+        #search{width: 60%; padding: 10px; border-radius: 20px; border: 1px solid #ccc; outline: none;}
+        .filter{display:flex;justify-content:center;gap:10px;margin:15px}
+
+        /* No Results Styling */
+        .no-results { grid-column: 1 / -1; text-align: center; padding: 60px 20px; background: #fff; border-radius: 10px; }
+        .no-results h2 { color: #555; }
+
+        /* Booking Overlay */
+        .booking{position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;z-index:100;display:none;overflow-y:auto;padding-bottom:50px}
+        .booking-content{max-width: 600px; margin: auto; padding: 20px;}
+        
+        .seats{display:grid;grid-template-columns: repeat(11,1fr);gap:8px;margin-top: 20px;}
+        .seat{padding:12px 0;background:#e0e0e0;text-align:center;border-radius:6px;cursor:pointer;font-size: 12px;}
+        .seat.selected{background:#28a745;color:white}
+        .seat.booked{background:#444;color:#fff;cursor:not-allowed; opacity: 0.6;}
+        .aisle{visibility: hidden;}
+
+        .screen{text-align:center;background:#333;color: #fff;padding:10px;margin:20px auto;width:80%;border-radius:0 0 50px 50px;}
+        .total-box{text-align:center;font-size: 1.2rem; margin:20px 0}
+        
+        /* Auth Modals */
+        .modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);display:none;justify-content:center;align-items:center;z-index:200}
+        .modal-box{background:#fff;padding:25px;border-radius:10px;width:320px}
+        .pass-wrapper { position: relative; width: 100%; margin: 10px 0; }
+        .modal-box input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        .toggle-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; color: #007bff; border: none; cursor: pointer; font-size: 12px;}
+    </style>
+</head>
+<body>
+
+<header>
+    <h2>🎟️ BookWave</h2>
+    <div>
+        <span id="userDisplay" style="margin-right: 15px; color: #aaa;"></span>
+        <button id="loginBtn" class="primary" onclick="openLogin()">Login</button>
+        <button id="logoutBtn" style="display:none; background:#dc3545; color:white" onclick="logout()">Logout</button>
+    </div>
+</header>
+
+<div class="search-bar">
+    <input id="search" placeholder="Search movies or events..." onkeyup="searchAll()">
+</div>
+
+<div class="filter">
+    <button onclick="filterType('all')">All</button>
+    <button onclick="filterType('movie')">Movies</button>
+    <button onclick="filterType('event')">Events</button>
+</div>
+
+<div class="container" id="list"></div>
+
+<!-- Booking Screen -->
+<div class="booking" id="bookingBox">
+    <div class="booking-content">
+        <button onclick="document.getElementById('bookingBox').style.display='none'">← Back</button>
+        <h2 id="name" style="text-align:center"></h2>
+        <div class="screen">SCREEN</div>
+        <div class="seats" id="seatContainer"></div>
+        <div class="total-box">Total Payable: <strong>₹<span id="total">0</span></strong></div>
+        <button class="primary" style="width:100%; padding: 15px;" onclick="pay()">Confirm & Pay</button>
+    </div>
+</div>
+
+<!-- Login Modal -->
+<div class="modal" id="loginModal">
+    <div class="modal-box">
+        <h3 id="authTitle">Login</h3>
+        <div class="pass-wrapper"><input id="luser" placeholder="Username"></div>
+        <div class="pass-wrapper">
+            <input id="lpass" type="password" placeholder="Password">
+            <button class="toggle-btn" onclick="togglePassword()">Show</button>
+        </div>
+        <button class="primary" style="width:100%; margin-top: 10px;" onclick="handleAuth()">Submit</button>
+        <p style="text-align:center; cursor:pointer; color:blue; font-size: 14px;" onclick="toggleAuth()">New user? Signup</p>
+        <button onclick="closeAll()" style="width:100%; margin-top:5px; background:none; color:#666">Cancel</button>
+    </div>
+</div>
+
+<script>
+let allItems=[], filtered=[];
+let selectedItem=null, selectedSeats=[];
+let isSignup = false;
+let user = localStorage.getItem("activeUser");
+
+const events=[
+    {name:"Arijit Singh Live",price:1500,type:"event",image:"https://cf-img-a-in.tosshub.com/sites/visualstory/wp/2025/04/HD-wallpaper-arjith-singh-bollywood-singerITG-1745563735262.jpg?size=*:900"},
+    {name:"Standup Comedy",price:499,type:"event",image:"https://play-lh.googleusercontent.com/ZFEdWR7oVxxKYuuAqWeb2Bs0RliNS66EQBd-jiPH32rKtyKQXZUSGEHQeq1N8ywsvJQ"}
+];
+
+const movies=[
+    {name:"Avengers: Endgame",price:250,type:"movie",image:"https://m.media-amazon.com/images/M/MV5BMjMxNjY2MDU1OV5BMl5BanBnXkFtZTgwNzY1MTUwNTM@._V1_.jpg"},
+    {name:"Interstellar",price:300,type:"movie",image:"https://m.media-amazon.com/images/I/81pbgU7wG-L._AC_UF1000,1000_QL80_.jpg"}
+];
+
+function init(){
+    allItems = [...movies, ...events];
+    filtered = allItems;
+    display();
+    updateUserUI();
+}
+
+function display(){
+    let list = document.getElementById("list");
+    list.innerHTML="";
+
+    if(filtered.length === 0){
+        list.innerHTML = `
+            <div class="no-results">
+                <div style="font-size: 50px;">🔍</div>
+                <h2>No matches found</h2>
+                <p>Try searching for something else or change filters.</p>
+                <button onclick="resetSearch()">Clear Filters</button>
+            </div>`;
+        return;
+    }
+
+    filtered.forEach((item, idx)=>{
+        list.innerHTML += `
+            <div class="card">
+                <img src="${item.image}">
+                <div class="card-content">
+                    <small>${item.type.toUpperCase()}</small>
+                    <h3>${item.name}</h3>
+                    <p>Starts from ₹${item.price}</p>
+                    <button class="primary" onclick="openBooking(${idx})">Book Tickets</button>
+                </div>
+            </div>`;
+    });
+}
+
+function resetSearch() {
+    document.getElementById("search").value = "";
+    filterType('all');
+}
+
+function searchAll(){
+    let q = document.getElementById("search").value.toLowerCase();
+    filtered = allItems.filter(i => i.name.toLowerCase().includes(q));
+    display();
+}
+
+function filterType(t){
+    filtered = (t === "all") ? allItems : allItems.filter(i => i.type === t);
+    display();
+}
+
+function openBooking(idx){
+    if(!user){ alert("Please login to book tickets"); openLogin(); return; }
+    selectedItem = filtered[idx];
+    selectedSeats = [];
+    document.getElementById("name").innerText = selectedItem.name;
+    document.getElementById("bookingBox").style.display = "block";
+    renderSeats();
+}
+
+function renderSeats(){
+    const container = document.getElementById("seatContainer");
+    container.innerHTML = "";
+    updateTotal();
+
+    let booked = JSON.parse(localStorage.getItem("booked_" + selectedItem.name)) || [];
+    let rows = ["A", "B", "C", "D", "E"];
+    
+    rows.forEach(row => {
+        for(let i=1; i<=11; i++){
+            if(i === 6){ 
+                let gap = document.createElement("div");
+                gap.className = "aisle";
+                container.appendChild(gap);
+                continue;
+            }
+            let id = row + i;
+            let seat = document.createElement("div");
+            seat.className = booked.includes(id) ? "seat booked" : "seat";
+            seat.innerText = id;
+            if(!booked.includes(id)){
+                seat.onclick = () => {
+                    if(selectedSeats.includes(id)){
+                        selectedSeats = selectedSeats.filter(s => s !== id);
+                        seat.classList.remove("selected");
+                    } else {
+                        if(selectedSeats.length >= 6) return alert("Max 6 seats!");
+                        selectedSeats.push(id);
+                        seat.classList.add("selected");
+                    }
+                    updateTotal();
+                };
+            }
+            container.appendChild(seat);
+        }
+    });
+}
+
+function updateTotal(){
+    let total = 0;
+    selectedSeats.forEach(s => {
+        let mult = (s[0] === "A" || s[0] === "B") ? 1.5 : 1;
+        total += selectedItem.price * mult;
+    });
+    document.getElementById("total").innerText = Math.floor(total);
+}
+
+function pay(){
+    if(selectedSeats.length === 0) return alert("Select seats!");
+    let amt = document.getElementById("total").innerText;
+
+    let options = {
+        key: "rzp_test_SlwhoAsYivcaVQ", // Replace with your actual Razorpay Key
+        amount: amt * 100,
+        currency: "INR",
+        name: "BookWave",
+        handler: function(res){
+            let key = "booked_" + selectedItem.name;
+            let current = JSON.parse(localStorage.getItem(key)) || [];
+            localStorage.setItem(key, JSON.stringify([...current, ...selectedSeats]));
+            alert("Payment Successful! Booking Confirmed.");
+            location.reload();
+        }
+    };
+    new Razorpay(options).open();
+}
+
+// Auth Logic
+function togglePassword() {
+    let pass = document.getElementById("lpass");
+    pass.type = (pass.type === "password") ? "text" : "password";
+    event.target.innerText = (pass.type === "password") ? "Show" : "Hide";
+}
+
+function openLogin(){ 
+    isSignup = false; 
+    document.getElementById("authTitle").innerText = "Login";
+    document.getElementById("loginModal").style.display = "flex"; 
+}
+
+function toggleAuth(){
+    isSignup = !isSignup;
+    document.getElementById("authTitle").innerText = isSignup ? "Signup" : "Login";
+}
+
+function closeAll(){ document.getElementById("loginModal").style.display = "none"; }
+
+function handleAuth(){
+    let u = document.getElementById("luser").value;
+    let p = document.getElementById("lpass").value;
+    if(!u || !p) return alert("Fill all fields");
+
+    if(isSignup){
+        localStorage.setItem("user_"+u, p);
+        alert("Account Created! Please Login.");
+        isSignup = false;
+        document.getElementById("authTitle").innerText = "Login";
+    } else {
+        if(localStorage.getItem("user_"+u) === p){
+            user = u;
+            localStorage.setItem("activeUser", u);
+            updateUserUI();
+            closeAll();
+        } else alert("Wrong credentials");
+    }
+}
+
+function logout(){
+    localStorage.removeItem("activeUser");
+    user = null;
+    updateUserUI();
+}
+
+function updateUserUI(){
+    document.getElementById("userDisplay").innerText = user ? "Hi, " + user : "";
+    document.getElementById("loginBtn").style.display = user ? "none" : "inline-block";
+    document.getElementById("logoutBtn").style.display = user ? "inline-block" : "none";
+}
+
+window.onload = init;
+</script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookWave | Premium Seating</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;margin:0;background:#f4f4f4;color:#333}
+        header{background:#222;color:#fff;padding:12px 25px;display:flex;justify-content:space-between;align-items: center;position:sticky;top:0;z-index:90}
+        button{padding:8px 15px;border:none;border-radius:5px;cursor:pointer; font-weight: bold; transition: 0.2s;}
+        .primary{background:#007bff;color:#fff}
+        .primary:hover{background:#0056b3}
+        .nav-link{color:#fff; text-decoration:none; margin-right:20px; cursor:pointer; font-size:14px}
+        .nav-link:hover{text-decoration:underline}
+
+        .container{padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px}
+        .card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 4px 10px rgba(0,0,0,.1); transition: 0.3s;}
+        .card:hover{transform: translateY(-5px);}
+        .card img{width:100%;height:350px;object-fit:cover}
+        .card-content{padding:15px}
+
+        .search-bar{text-align:center;padding:20px;background:#fff;border-bottom: 1px solid #ddd;}
+        #search{width: 60%; padding: 12px; border-radius: 25px; border: 1px solid #ccc; outline: none; transition: 0.3s;}
+        #search:focus{border-color:#007bff; box-shadow: 0 0 8px rgba(0,123,255,0.2)}
+        .filter{display:flex;justify-content:center;gap:10px;margin:15px}
+
+        .no-results { grid-column: 1 / -1; text-align: center; padding: 60px 20px; background: #fff; border-radius: 10px; }
+
+        /* Overlays (Booking & My Bookings) */
+        .overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:#fff;z-index:100;display:none;overflow-y:auto;padding-bottom:50px}
+        .overlay-content{max-width: 700px; margin: auto; padding: 20px;}
+        
+        .seats{display:grid;grid-template-columns: repeat(11,1fr);gap:8px;margin-top: 20px;}
+        .seat{padding:12px 0;background:#e0e0e0;text-align:center;border-radius:6px;cursor:pointer;font-size: 11px;}
+        .seat.selected{background:#28a745;color:white}
+        .seat.booked{background:#444;color:#fff;cursor:not-allowed; opacity: 0.6;}
+        .aisle{visibility: hidden;}
+
+        .screen{text-align:center;background:#333;color: #fff;padding:10px;margin:20px auto;width:80%;border-radius:0 0 50px 50px;}
+        .total-box{text-align:center;font-size: 1.2rem; margin:20px 0}
+        
+        /* My Bookings List */
+        .booking-card { background:#f9f9f9; padding:15px; border-radius:8px; margin-bottom:15px; border-left:5px solid #007bff; display:flex; justify-content:space-between; align-items:center;}
+        .booking-card h4 { margin:0 0 5px 0; }
+        .booking-card p { margin:0; font-size:13px; color:#666; }
+
+        /* Auth Modals */
+        .modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.6);display:none;justify-content:center;align-items:center;z-index:200}
+        .modal-box{background:#fff;padding:25px;border-radius:10px;width:320px}
+        .pass-wrapper { position: relative; width: 100%; margin: 10px 0; }
+        .modal-box input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+        .toggle-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; color: #007bff; border: none; cursor: pointer; font-size: 12px;}
+    </style>
+</head>
+<body>
+
+<header>
+    <h2>🎟️ BookWave</h2>
+    <div>
+        <a class="nav-link" id="myBookingsLink" onclick="showMyBookings()">My Bookings</a>
+        <span id="userDisplay" style="margin-right: 15px; color: #007bff; font-weight:bold;"></span>
+        <button id="loginBtn" class="primary" onclick="openLogin()">Login</button>
+        <button id="logoutBtn" style="display:none; background:#dc3545; color:white" onclick="logout()">Logout</button>
+    </div>
+</header>
+
+<div class="search-bar">
+    <input id="search" placeholder="Search movies or events..." onkeyup="searchAll()">
+</div>
+
+<div class="filter">
+    <button onclick="filterType('all')">All</button>
+    <button onclick="filterType('movie')">Movies</button>
+    <button onclick="filterType('event')">Events</button>
+</div>
+
+<div class="container" id="list"></div>
+
+<!-- Booking Overlay -->
+<div class="overlay" id="bookingBox">
+    <div class="overlay-content">
+        <button onclick="closeOverlay('bookingBox')">← Close</button>
+        <h2 id="targetName" style="text-align:center"></h2>
+        <div class="screen">SCREEN</div>
+        <div class="seats" id="seatContainer"></div>
+        <div class="total-box">Total Payable: <strong>₹<span id="total">0</span></strong></div>
+        <button class="primary" style="width:100%; padding: 15px;" onclick="pay()">Confirm & Pay</button>
+    </div>
+</div>
+
+<!-- My Bookings Overlay -->
+<div class="overlay" id="historyBox">
+    <div class="overlay-content">
+        <button onclick="closeOverlay('historyBox')">← Back to Browse</button>
+        <h2 style="text-align:center; margin-bottom:30px;">Your Booking History</h2>
+        <div id="historyList"></div>
+    </div>
+</div>
+
+<!-- Login Modal -->
+<div class="modal" id="loginModal">
+    <div class="modal-box">
+        <h3 id="authTitle">Login</h3>
+        <div class="pass-wrapper"><input id="luser" placeholder="Username"></div>
+        <div class="pass-wrapper">
+            <input id="lpass" type="password" placeholder="Password">
+            <button class="toggle-btn" onclick="togglePassword()">Show</button>
+        </div>
+        <button class="primary" style="width:100%; margin-top: 10px;" onclick="handleAuth()">Submit</button>
+        <p style="text-align:center; cursor:pointer; color:blue; font-size: 14px;" onclick="toggleAuth()">New user? Signup</p>
+        <button onclick="closeAll()" style="width:100%; margin-top:5px; background:none; color:#666">Cancel</button>
+    </div>
+</div>
+
+<script>
+let allItems=[], filtered=[];
+let selectedItem=null, selectedSeats=[];
+let isSignup = false;
+let user = localStorage.getItem("activeUser");
+
+const events=[
+    {name:"Arijit Singh Live",price:1500,type:"event",image:"https://cf-img-a-in.tosshub.com/sites/visualstory/wp/2025/04/HD-wallpaper-arjith-singh-bollywood-singerITG-1745563735262.jpg?size=*:900"},
+    {name:"Standup Comedy Night",price:499,type:"event",image:"https://play-lh.googleusercontent.com/ZFEdWR7oVxxKYuuAqWeb2Bs0RliNS66EQBd-jiPH32rKtyKQXZUSGEHQeq1N8ywsvJQ"}
+];
+
+const movies=[
+    {name:"Avengers: Endgame",price:250,type:"movie",image:"https://m.media-amazon.com/images/M/MV5BMjMxNjY2MDU1OV5BMl5BanBnXkFtZTgwNzY1MTUwNTM@._V1_.jpg"},
+    {name:"Interstellar",price:300,type:"movie",image:"https://m.media-amazon.com/images/I/81pbgU7wG-L._AC_UF1000,1000_QL80_.jpg"}
+];
+
+function init(){
+    allItems = [...movies, ...events];
+    filtered = allItems;
+    display();
+    updateUserUI();
+}
+
+function display(){
+    let list = document.getElementById("list");
+    list.innerHTML="";
+    if(filtered.length === 0){
+        list.innerHTML = `<div class="no-results"><h2>No matches found</h2><button onclick="resetSearch()">Clear Filters</button></div>`;
+        return;
+    }
+    filtered.forEach((item, idx)=>{
+        list.innerHTML += `
+            <div class="card">
+                <img src="${item.image}">
+                <div class="card-content">
+                    <small style="color:#007bff">${item.type.toUpperCase()}</small>
+                    <h3>${item.name}</h3>
+                    <p>Starts from ₹${item.price}</p>
+                    <button class="primary" onclick="openBooking(${idx})">Book Tickets</button>
+                </div>
+            </div>`;
+    });
+}
+
+function resetSearch() { document.getElementById("search").value = ""; filterType('all'); }
+function searchAll(){
+    let q = document.getElementById("search").value.toLowerCase();
+    filtered = allItems.filter(i => i.name.toLowerCase().includes(q));
+    display();
+}
+function filterType(t){
+    filtered = (t === "all") ? allItems : allItems.filter(i => i.type === t);
+    display();
+}
+
+// Booking Logic
+function openBooking(idx){
+    if(!user){ alert("Please login first"); openLogin(); return; }
+    selectedItem = filtered[idx];
+    selectedSeats = [];
+    document.getElementById("targetName").innerText = selectedItem.name;
+    document.getElementById("bookingBox").style.display = "block";
+    renderSeats();
+}
+
+function renderSeats(){
+    const container = document.getElementById("seatContainer");
+    container.innerHTML = "";
+    updateTotal();
+    let booked = JSON.parse(localStorage.getItem("booked_" + selectedItem.name)) || [];
+    let rows = ["A", "B", "C", "D", "E"];
+    rows.forEach(row => {
+        for(let i=1; i<=11; i++){
+            if(i === 6){ 
+                let gap = document.createElement("div"); gap.className = "aisle"; container.appendChild(gap);
+                continue;
+            }
+            let id = row + i;
+            let seat = document.createElement("div");
+            seat.className = booked.includes(id) ? "seat booked" : "seat";
+            seat.innerText = id;
+            if(!booked.includes(id)){
+                seat.onclick = () => {
+                    if(selectedSeats.includes(id)){
+                        selectedSeats = selectedSeats.filter(s => s !== id);
+                        seat.classList.remove("selected");
+                    } else {
+                        if(selectedSeats.length >= 6) return alert("Max 6 seats!");
+                        selectedSeats.push(id);
+                        seat.classList.add("selected");
+                    }
+                    updateTotal();
+                };
+            }
+            container.appendChild(seat);
+        }
+    });
+}
+
+function updateTotal(){
+    let total = 0;
+    selectedSeats.forEach(s => {
+        let mult = (s[0] === "A" || s[0] === "B") ? 1.5 : 1;
+        total += selectedItem.price * mult;
+    });
+    document.getElementById("total").innerText = Math.floor(total);
+}
+
+function pay(){
+    if(selectedSeats.length === 0) return alert("Select seats!");
+    let finalAmt = document.getElementById("total").innerText;
+    
+    // Simulate Razorpay
+    let options = {
+        key: "rzp_test_SlwhoAsYivcaVQ",
+        amount: finalAmt * 100,
+        currency: "INR",
+        name: "BookWave",
+        handler: function(res){
+            // 1. Save globally for the specific show (to gray them out for everyone)
+            let showKey = "booked_" + selectedItem.name;
+            let currentBooked = JSON.parse(localStorage.getItem(showKey)) || [];
+            localStorage.setItem(showKey, JSON.stringify([...currentBooked, ...selectedSeats]));
+
+            // 2. Save to User's Personal History
+            let historyKey = "history_" + user;
+            let userHistory = JSON.parse(localStorage.getItem(historyKey)) || [];
+            userHistory.push({
+                itemName: selectedItem.name,
+                seats: selectedSeats,
+                amount: finalAmt,
+                date: new Date().toLocaleDateString()
+            });
+            localStorage.setItem(historyKey, JSON.stringify(userHistory));
+
+            alert("Booking Successful!");
+            closeOverlay('bookingBox');
+            location.reload();
+        }
+    };
+    new Razorpay(options).open();
+}
+
+// "My Bookings" Extension Logic
+function showMyBookings() {
+    if(!user) { alert("Please login to see history"); openLogin(); return; }
+    let listDiv = document.getElementById("historyList");
+    let history = JSON.parse(localStorage.getItem("history_" + user)) || [];
+    
+    listDiv.innerHTML = history.length === 0 ? "<p style='text-align:center'>No bookings yet.</p>" : "";
+    
+    history.reverse().forEach(b => {
+        listDiv.innerHTML += `
+            <div class="booking-card">
+                <div>
+                    <h4>${b.itemName}</h4>
+                    <p>Seats: <strong>${b.seats.join(", ")}</strong></p>
+                    <p>Date: ${b.date}</p>
+                </div>
+                <div style="text-align:right">
+                    <span style="font-weight:bold; color:#28a745">₹${b.amount}</span><br>
+                    <small style="color:blue">Paid ✅</small>
+                </div>
+            </div>`;
+    });
+    document.getElementById("historyBox").style.display = "block";
+}
+
+function closeOverlay(id) { document.getElementById(id).style.display = "none"; }
+
+// Auth and UI Logic
+function togglePassword() {
+    let pass = document.getElementById("lpass");
+    pass.type = (pass.type === "password") ? "text" : "password";
+    event.target.innerText = (pass.type === "password") ? "Show" : "Hide";
+}
+function openLogin(){ isSignup = false; document.getElementById("authTitle").innerText = "Login"; document.getElementById("loginModal").style.display = "flex"; }
+function toggleAuth(){ isSignup = !isSignup; document.getElementById("authTitle").innerText = isSignup ? "Signup" : "Login"; }
+function closeAll(){ document.getElementById("loginModal").style.display = "none"; }
+function handleAuth(){
+    let u = document.getElementById("luser").value, p = document.getElementById("lpass").value;
+    if(!u || !p) return alert("Fill all fields");
+    if(isSignup){ localStorage.setItem("user_"+u, p); alert("Account Created! Login now."); isSignup=false; toggleAuth(); } 
+    else {
+        if(localStorage.getItem("user_"+u) === p){ user = u; localStorage.setItem("activeUser", u); updateUserUI(); closeAll(); } 
+        else alert("Invalid credentials");
+    }
+}
+function logout(){ localStorage.removeItem("activeUser"); user = null; updateUserUI(); location.reload(); }
+function updateUserUI(){
+    document.getElementById("userDisplay").innerText = user ? "Hi, " + user : "";
+    document.getElementById("loginBtn").style.display = user ? "none" : "inline-block";
+    document.getElementById("logoutBtn").style.display = user ? "inline-block" : "none";
+    document.getElementById("myBookingsLink").style.display = user ? "inline-block" : "none";
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
